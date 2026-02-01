@@ -471,7 +471,7 @@
       0%,100%{ transform: scale(1); opacity:.85; }
       50%{ transform: scale(1.35); opacity:1; }
     }
-    .dangerText{ color: var(--danger); font-weight:800; }
+    .dangerText{ color: var(--bad); font-weight:800; }
 
 
     /* Smart timer showcase */
@@ -1256,8 +1256,41 @@ let admin = { loggedIn:false };
 /* =========================================================
    Router
 ========================================================= */
-function show(screenId){
+const SCREEN_ROUTE = {
+  screenHome:  "",
+  screenSetup: "setup",
+  screenQuiz:  "quiz",
+  screenResult:"result",
+  screenBoard: "board",
+  screenAdmin: "admin"
+};
+
+
+function routeToScreen(route){
+  const r = String(route||"").replace(/^#/, "");
+  const entry = Object.entries(SCREEN_ROUTE).find(([,v]) => v === r);
+  return entry ? entry[0] : "screenHome";
+}
+
+function setRouteForScreen(screenId, mode){
+  const route = SCREEN_ROUTE[screenId];
+  if(route === undefined) return;
+
+  const url = route ? `#${route}` : "#";
+  const state = { screen: screenId };
+
+  if(mode === "replace"){
+    history.replaceState(state, "", url);
+  }else{
+    history.pushState(state, "", url);
+  }
+}
+
+  
+  function show(screenId, opts = {}){
   const prev = app.ui.currentScreen;
+  const { history = true, replace = false } = opts;
+
   if(prev==="screenAdmin") saveScroll(LS.SCROLL_ADMIN);
 
   SCREENS.forEach(s=>{
@@ -1267,6 +1300,10 @@ function show(screenId){
 
   app.ui.currentScreen = screenId;
 
+  // History handling
+  if(history){
+    setRouteForScreen(screenId, replace ? "replace" : "push");
+  }
 
   // Safety: stop smart timer when navigating away from quiz (or returning home)
   if(prev==="screenQuiz" && screenId!=="screenQuiz") stopSmartTimer();
@@ -1287,6 +1324,10 @@ function show(screenId){
   if(homeBtn) homeBtn.style.display=(screenId==="screenHome") ? "none" : "grid";
   if(adminBtn) adminBtn.style.display=(screenId==="screenAdmin") ? "none" : "grid";
 }
+
+
+
+
 
 /* =========================================================
    Device + Result Keys
@@ -2255,23 +2296,18 @@ $("startBtn").addEventListener("click", startQuiz);
   $("backFromBoardBtn").addEventListener("click", backFromBoard);
 
   $("backFromAdminBtn").addEventListener("click", ()=>show(app.ui.adminReturnScreen || "screenHome"));
-  // Confirm modal (delegated handlers to avoid DOM-order issues)
-  document.addEventListener("click", (e)=>{
-    const t = e.target;
-    if(!t) return;
-    if(t.id==="confirmOkBtn"){ e.preventDefault(); closeConfirm(true); return; }
-    if(t.id==="confirmCancelBtn"){ e.preventDefault(); closeConfirm(false); return; }
-    if(t.id==="confirmOverlay"){ closeConfirm(false); return; }
-  });
-  document.addEventListener("keydown", (e)=>{
-    const ov=$("confirmOverlay");
-    if(ov && ov.classList.contains("show") && e.key==="Escape") closeConfirm(false);
-    // Admin: Enter submits login
-    if((e.key==="Enter") && (document.activeElement && (document.activeElement.id==="adminUser" || document.activeElement.id==="adminPass"))){
+
+// Admin: Enter submits login
+document.addEventListener("keydown", (e)=>{
+  if(e.key==="Enter"){
+    const ae = document.activeElement;
+    if(ae && (ae.id==="adminUser" || ae.id==="adminPass")){
       e.preventDefault();
       adminLogin();
     }
-  });
+  }
+});
+
 
   $("adminLoginBtn").addEventListener("click", adminLogin);
 
@@ -2287,8 +2323,21 @@ $("startBtn").addEventListener("click", startQuiz);
 
   const clr=$("clearLocalBtn");
   if(clr) clr.addEventListener("click", clearLocalResults);
+window.addEventListener("popstate", (e)=>{
+  const target =
+    (e.state && e.state.screen) ||
+    routeToScreen(location.hash) ||
+    "screenHome";
 
-  show("screenHome");
+  // اعرض الشاشة بدون إضافة history جديدة
+  show(target, { history:false });
+
+  // أمان: إذا رجعنا خارج quiz أوقف المؤقت
+  if(target !== "screenQuiz") stopSmartTimer();
+});
+
+const first = routeToScreen(location.hash);
+show(first, { history:true, replace:true });
 }
 boot();
 </script>
