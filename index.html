@@ -791,10 +791,7 @@
 
           <div id="adminLoginBox" style="margin-top:12px;">
             <div class="twocol">
-              <div>
-                <label>اسم المستخدم</label>
-                <input id="adminUser" placeholder="اسم المستخدم" />
-              </div>
+              
               <div>
                 <label>كلمة المرور</label>
                 <input id="adminPass" type="password" placeholder="••••••" />
@@ -998,6 +995,8 @@ const LS = Object.freeze({
   SYNCED: "qa_school_synced_keys_v1",
   DEVICE_ID: "qa_school_device_id_v1",
   SCROLL_ADMIN: "qa_school_scroll_admin_panel_v1",
+  ADMIN_TOKEN: "qa_school_admin_token_v1",
+
 });
 
 const IMAGE_EXTS = ["png","jpg","jpeg","webp"];
@@ -1007,10 +1006,8 @@ const BANNER_BASES= ["Main","main","banner","Banner"];
 const DEFAULT_STAR_NAMES = ["فاطمة ناصر المعجم","لمار أنس الغامدي","سارة خالد الصيعري","لينا عبدالله العمري"];
 
 const DEFAULT_GS_URL    = "https://script.google.com/macros/s/AKfycbx7fnqiT27URTW2mzC-Y1rJRi1rhNd7HXQd4YG_V6qILU1blWKDgiz_wNuJm6e-4yEA/exec";
-const DEFAULT_GS_SECRET = "SV-QA-2026";
 
-const ADMIN_USER = "Lolo";
-const ADMIN_PASS = "Lamar";
+
 
 const SCREENS = ["screenHome","screenSetup","screenQuiz","screenResult","screenBoard","screenAdmin"];
 
@@ -1850,7 +1847,6 @@ function renderAdminState(){
 function openAdmin(){
   app.ui.adminReturnScreen = app.ui.currentScreen;
   show("screenAdmin");
-  $("adminUser").value="";
   $("adminPass").value="";
   $("gsUrlView").textContent=DEFAULT_GS_URL;
   renderAdminState();
@@ -1859,20 +1855,65 @@ function openAdmin(){
 }
 
 function adminLogin(){
-  const u=($("adminUser")?.value||"").trim();
-  const p=($("adminPass")?.value||"").trim();
-  if(u===ADMIN_USER && p===ADMIN_PASS){
-    admin.loggedIn=true;
-    renderAdminState();
-  } else {
-    alert("بيانات الدخول غير صحيحة.");
-  }
+  const p = ($("adminPass")?.value||"").trim();
+  if(!p){ alert("أدخلي كلمة المرور."); return; }
+
+  const cbName = "cb_admin_" + Math.random().toString(16).slice(2);
+  const timeoutMs = 12000;
+
+  const cleanup = (scriptEl)=>{
+    try{ delete window[cbName]; }catch(e){}
+    if(scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+  };
+
+  const timer = setTimeout(()=>{
+    const s = document.getElementById(cbName+"_script");
+    cleanup(s);
+    alert("تعذر الاتصال بخدمة الدخول. تحقق من الرابط/الاتصال.");
+  }, timeoutMs);
+
+  window[cbName] = (data)=>{
+    clearTimeout(timer);
+    const s = document.getElementById(cbName+"_script");
+    cleanup(s);
+
+    if(data && data.ok && data.token){
+      admin.loggedIn = true;
+      localStorage.setItem(LS.ADMIN_TOKEN, String(data.token));
+      renderAdminState();
+    }else{
+      alert("كلمة المرور غير صحيحة.");
+    }
+  };
+
+  // JSONP via doGet (Web App)
+  const url =
+    DEFAULT_GS_URL +
+    "?action=adminLogin" +
+    "&pass=" + encodeURIComponent(p) +
+    "&callback=" + encodeURIComponent(cbName) +
+    "&_ts=" + Date.now();
+
+  const script = document.createElement("script");
+  script.id = cbName + "_script";
+  script.src = url;
+  script.onerror = ()=>{
+    clearTimeout(timer);
+    cleanup(script);
+    alert("تعذر الاتصال بخدمة الدخول. تحقق من الرابط/الاتصال.");
+  };
+  document.head.appendChild(script);
 }
+
+
 function adminLogout(){
   admin.loggedIn=false;
+  localStorage.removeItem(LS.ADMIN_TOKEN);
   renderAdminState();
-  show("screenHome");
+  show(app.ui.adminReturnScreen || "screenHome");
 }
+
+
 
 function exportCsv(){
   const csv=toCsv(sortResults(getResults()));
@@ -2010,6 +2051,8 @@ function refreshSyncNote(){
   $("syncNote").textContent=`غير المرفوع: ${uns} | إجمالي: ${all.length}`;
 }
 async function postToGoogleSheet(payload){
+  const token = localStorage.getItem(LS.ADMIN_TOKEN) || "";
+  payload.token = token; // token ديناميكي وليس secret ثابت
   await fetch(DEFAULT_GS_URL,{
     method:"POST",
     mode:"no-cors",
@@ -2017,6 +2060,7 @@ async function postToGoogleSheet(payload){
     body:JSON.stringify(payload)
   });
 }
+
 async function pushUnsyncedToGoogleSheet(opts={}){
   const silent=!!opts.silent;
   const all=sortResults(getResults());
@@ -2030,7 +2074,6 @@ async function pushUnsyncedToGoogleSheet(opts={}){
   }
 
   const payload={
-    secret:DEFAULT_GS_SECRET,
     deviceId:getDeviceId(),
     source:"QA School Project",
     pushedAt:new Date().toISOString(),
@@ -2052,7 +2095,6 @@ async function pushAllToGoogleSheet(){
   if(all.length===0){ alert("لا توجد نتائج."); return; }
 
   const payload={
-    secret:DEFAULT_GS_SECRET,
     deviceId:getDeviceId(),
     source:"QA School Project",
     pushedAt:new Date().toISOString(),
@@ -2206,6 +2248,8 @@ function renderQuestionBank(){
    Boot
 ========================================================= */
 function boot(){
+  admin.loggedIn = !!localStorage.getItem(LS.ADMIN_TOKEN);
+
   applyTheme(localStorage.getItem(LS.THEME) || "midnight");
 
   const logoEl=$("siteLogo");
@@ -2297,16 +2341,20 @@ $("startBtn").addEventListener("click", startQuiz);
 
   $("backFromAdminBtn").addEventListener("click", ()=>show(app.ui.adminReturnScreen || "screenHome"));
 
-// Admin: Enter submits login
+// Admin: Enter submits login (only when Admin screen + login box visible)
 document.addEventListener("keydown", (e)=>{
-  if(e.key==="Enter"){
-    const ae = document.activeElement;
-    if(ae && (ae.id==="adminUser" || ae.id==="adminPass")){
-      e.preventDefault();
-      adminLogin();
-    }
+  if(e.key !== "Enter") return;
+
+  const ae = document.activeElement;
+  const isAdminScreen = app.ui.currentScreen === "screenAdmin";
+  const loginBoxVisible = $("adminLoginBox") && $("adminLoginBox").style.display !== "none";
+
+  if(isAdminScreen && loginBoxVisible && ae && ae.id === "adminPass"){
+    e.preventDefault();
+    adminLogin();
   }
 });
+
 
 
   $("adminLoginBtn").addEventListener("click", adminLogin);
