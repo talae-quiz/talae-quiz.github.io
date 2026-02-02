@@ -1615,9 +1615,10 @@ function renderQuestion(){
   const pct=Math.round(((app.index+1)/Math.max(1,total))*100);
 
   $("progressFill").style.width=`${pct}%`;
-  $("qText").textContent=`س${app.index+1}: ${q.question}`;
+const qPrefix = isMostlyLatin(q.question) ? "Q" : "س";
+$("qText").textContent = `${qPrefix}${app.index+1}: ${q.question}`;
 
-  $("qType").textContent=(q.type==="mcq"?"اختيار من متعدد":"صح / خطأ");
+  $("qType").textContent=(q.type==="mcq"?"اختيار متعدد":"صح / خطأ");
 
   // Remaining questions badge
   const remaining = Math.max(0, total - app.index);
