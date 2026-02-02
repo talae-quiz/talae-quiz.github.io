@@ -570,6 +570,28 @@
     html[data-theme="school"] .confirmTitle{color:var(--text);}
     html[data-theme="school"] .confirmMsg{color:var(--text);opacity:.9;}
 
+    /* ضبط اتجاه خيارات الإجابة حسب لغة السؤال */
+/* Direction-aware options layout */
+/* Direction-aware options layout (stable radio + text order) */
+#answersBox[dir="ltr"] .opt{
+  direction: ltr;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+#answersBox[dir="rtl"] .opt{
+  direction: rtl;
+  text-align: right;
+  justify-content: flex-start; /* لا نعكس الفليكس */
+}
+
+/* Ensure option content aligns consistently */
+#answersBox[dir="ltr"] .opt > div{ text-align:left; }
+#answersBox[dir="rtl"] .opt > div{ text-align:right; }
+
+
+
+
 </style>
 </head>
 
@@ -1539,6 +1561,54 @@ function startQuiz(){
   renderQuestion();
 }
 
+  function isMostlyLatin(text){
+  const s = String(text || "");
+  // حروف عربية
+  const ar = (s.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g) || []).length;
+  // حروف لاتينية
+  const la = (s.match(/[A-Za-z]/g) || []).length;
+  // إذا اللاتيني أكثر بوضوح نعتبرها English
+  return la > ar;
+}
+function applyLangDirectionForQuiz(text){
+  const ltr = isMostlyLatin(text);
+
+  const qEl = $("qText");
+  const tEl = $("qType");
+  const aBox = $("answersBox");
+
+  const dir = ltr ? "ltr" : "rtl";
+  const align = ltr ? "left" : "right";
+
+  if(qEl){
+    qEl.dir = dir;
+    qEl.style.textAlign = align;
+  }
+  if(tEl){
+    tEl.dir = dir;
+    tEl.style.textAlign = align;
+  }
+
+  if(aBox){
+    // نخلي الـ container نفسه يمشي على نفس الاتجاه
+    aBox.dir = dir;
+    aBox.style.textAlign = align;
+
+    // ونضمن نص الخيارات نفسه يتماشى
+    // Apply direction to the whole option row + its text
+aBox.querySelectorAll(".opt").forEach(opt=>{
+  opt.dir = dir;
+  opt.style.textAlign = align;
+});
+aBox.querySelectorAll(".opt > div").forEach(div=>{
+  div.dir = dir;
+  div.style.textAlign = align;
+});
+
+  }
+}
+
+
 function renderQuestion(){
   const q=app.questions[app.index];
   const total=app.questions.length;
@@ -1546,6 +1616,7 @@ function renderQuestion(){
 
   $("progressFill").style.width=`${pct}%`;
   $("qText").textContent=`س${app.index+1}: ${q.question}`;
+
   $("qType").textContent=(q.type==="mcq"?"اختيار من متعدد":"صح / خطأ");
 
   // Remaining questions badge
@@ -1585,6 +1656,7 @@ function renderQuestion(){
       radios.forEach(r=>{ if((r.value==="true")===saved) r.checked=true; });
     }
   }
+  applyLangDirectionForQuiz(q.question);
 
   // Smart Challenge timer
   if(app.mode==="smart_challenge") startSmartTimer();
