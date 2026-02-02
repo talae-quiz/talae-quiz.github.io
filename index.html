@@ -1005,7 +1005,7 @@ const BANNER_BASES= ["Main","main","banner","Banner"];
 
 const DEFAULT_STAR_NAMES = ["فاطمة ناصر المعجم","لمار أنس الغامدي","سارة خالد الصيعري","لينا عبدالله العمري","جود أحمد معبوج"];
 
-const DEFAULT_GS_URL = "https://script.google.com/macros/s/AKfycbzRxzqKw-BBtuaCqNxTzOfF46h-A_Nvmv_DMRobq4G0Vx-hZ14MNjVL6zljYrN_fGq-/exec";
+const DEFAULT_GS_URL = "https://script.google.com/macros/s/AKfycbxPDGjb-IvMF-x5P1XPfwMldIuJNlZ6QnUw_gb-8r5NBrBRu2YFH4u2qcelR_WNGXKj/exec";
 
 
 
@@ -1687,10 +1687,16 @@ function finishQuiz(force=false){
   };
 
   item.key=resultKey(item);
-  saveResults(sortResults([...getResults(), item]));
+  // 1) احفظ محليًا أولًا (للاستقرار والتجربة)
+const current = getResults();
+current.push(item);
+saveResults(sortResults(current));
 
-  // Auto-upload (silent)
-  pushUnsyncedToGoogleSheet({silent:true});
+// 2) ارفع إلى Google Sheet
+pushOneResultToGoogleSheet(item).catch(()=>{});
+
+
+
 
   if(app.mode==="smart_challenge"){
     $("resultTitle").textContent=`${app.student.name}`;
@@ -2044,6 +2050,27 @@ function resetStarsToDefault(){
 /* =========================================================
    Google Sheet Sync (no-cors as before)
 ========================================================= */
+async function pushOneResultToGoogleSheet(result){
+  const payload={
+    deviceId:getDeviceId(),
+    source:"QA School Project",
+    pushedAt:new Date().toISOString(),
+    results:[result]
+  };
+
+  await postToGoogleSheet(payload);
+
+  // علّمها مرفوعة محلياً
+  try{
+    const synced = getSyncedKeys();
+    synced.add(result.key);
+    saveSyncedKeys(synced);
+    refreshSyncNote();
+  }catch(e){}
+}
+
+
+  
 function refreshSyncNote(){
   const all=getResults();
   const synced=getSyncedKeys();
@@ -2051,15 +2078,14 @@ function refreshSyncNote(){
   $("syncNote").textContent=`غير المرفوع: ${uns} | إجمالي: ${all.length}`;
 }
 async function postToGoogleSheet(payload){
-  const token = localStorage.getItem(LS.ADMIN_TOKEN) || "";
-  payload.token = token; // token ديناميكي وليس secret ثابت
-  await fetch(DEFAULT_GS_URL,{
-    method:"POST",
-    mode:"no-cors",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(payload)
+  await fetch(DEFAULT_GS_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
   });
 }
+
 
 async function pushUnsyncedToGoogleSheet(opts={}){
   const silent=!!opts.silent;
